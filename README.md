@@ -1,4 +1,4 @@
-# blazor-diagram-organizational-layout
+# Blazor-Diagram-Organizational-Layout
 A Syncfusion Blazor Diagram sample that showcases the Organizational Chart layout in the Blazor Diagram component.
 
 ## How to Run the Blazor WebAssembly Application
