@@ -1,4 +1,5 @@
 ﻿@page "/"
+
 @using Syncfusion.Blazor.Diagram
 
 <SfDiagramComponent @ref="diagram"
@@ -36,7 +37,6 @@
         {
             // Mirrors customer's: await sessionStorage.GetItemAsync<List<Grupo>>("Organigrama")
             estructura = await Task.FromResult(BuildEstructura());
-
             // Flatten it into the list that DataSourceSettings expects
             orgNodes = AplanarEstructura(estructura);
 
@@ -107,6 +107,7 @@
             foreach (var division in grupo.Divisiones)
             {
                 var divisionId = $"n{contador++}";
+                lista.Add(new OrgNode { Id = divisionId, ParentId = grupoId, Nombre = division.Nombre, Tipo = "Division" });
                 lista.Add(new OrgNode { Id = divisionId, ParentId = grupoId, Nombre = division.Nombre, Tipo = "Division" });
                 foreach (var taller in division.Talleres)
                 {
@@ -351,7 +352,7 @@
             }
         },
 
-        // ── Grupo 2  (≈ 249 nodes: 1 root + 5 divisions + 45 talleres + 198 secciones) ──
+// ── Grupo 2  (≈ 249 nodes: 1 root + 5 divisions + 45 talleres + 198 secciones) ──
         new Grupo
         {
             Nombre = "GRUPO DE MANTENIMIENTO",
