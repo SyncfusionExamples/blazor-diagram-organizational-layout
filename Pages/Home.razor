@@ -1,0 +1,517 @@
+﻿@page "/"
+@using Syncfusion.Blazor.Diagram
+
+<SfDiagramComponent @ref="diagram"
+                    Height="800px"
+                    Width="2000px"
+                    Nodes="@nodes"
+                    Connectors="@connectors"
+                    NodeCreating="OnNodeCreating">
+    <Layout Type="LayoutType.OrganizationalChart"
+            HorizontalSpacing="20"
+            VerticalSpacing="30"
+            Orientation="LayoutOrientation.TopToBottom">
+    </Layout>
+    <SnapSettings Constraints="SnapConstraints.None"></SnapSettings>
+    <DataSourceSettings ID="Id" ParentID="ParentId" DataSource="@orgNodes">
+    </DataSourceSettings>
+</SfDiagramComponent>
+
+@code {
+    private SfDiagramComponent? diagram;
+
+    // ── Diagram node/connector collections (populated automatically by DataSourceSettings) ──
+    private DiagramObjectCollection<Node> nodes = new();
+    private DiagramObjectCollection<Connector> connectors = new();
+
+    // ── Flat list consumed by DataSourceSettings ──────────────────────────────
+    private List<OrgNode> orgNodes = new();
+
+    // ── Hierarchical source data (mimics the customer's Grupo/Division/Taller/Seccion structure) ──
+    private List<Grupo> estructura = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Mirrors customer's: await sessionStorage.GetItemAsync<List<Grupo>>("Organigrama")
+            estructura = await Task.FromResult(BuildEstructura());
+
+            // Flatten it into the list that DataSourceSettings expects
+            orgNodes = AplanarEstructura(estructura);
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+    }
+
+    // ── Node styling ──────────────────────────────────────────────────────────
+    private void OnNodeCreating(IDiagramObject obj)
+    {
+        if (obj is not Node node) return;
+
+        node.Width = 180;
+        node.Height = 50;
+
+        // Read data bound from DataSourceSettings
+        var orgNode = node.Data as OrgNode;
+
+        // Color nodes differently by level / type
+        string fill = orgNode?.Tipo switch
+        {
+            "Grupo" => "#1e3a5f",
+            "Division" => "#2d6a9f",
+            "Taller" => "#4a90c4",
+            _ => "#7fb3d3"   // Seccion
+        };
+
+        node.Style = new ShapeStyle
+        {
+            Fill = fill,
+            StrokeColor = "#0d2b45",
+            StrokeWidth = 1
+        };
+
+        // Set annotation text to the node's Nombre (same as what appears in the image)
+        node.Annotations = new DiagramObjectCollection<ShapeAnnotation>
+        {
+            new ShapeAnnotation
+            {
+                Content = orgNode?.Nombre ?? string.Empty,
+                Style   = new TextStyle
+                {
+                    Color    = "#ffffff",
+                    FontSize = 11,
+                    Bold     = true
+                },
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment   = VerticalAlignment.Center
+            }
+        };
+    }
+
+    // ── Flatten hierarchy → flat list (same logic as customer, but CORRECT placement) ──
+    private static List<OrgNode> AplanarEstructura(List<Grupo> grupos)
+    {
+        var lista = new List<OrgNode>();
+        int contador = 0;
+
+        foreach (var grupo in grupos)
+        {
+            var grupoId = $"n{contador++}";
+            lista.Add(new OrgNode { Id = grupoId, ParentId = null, Nombre = grupo.Nombre, Tipo = "Grupo" });
+
+            foreach (var division in grupo.Divisiones)
+            {
+                var divisionId = $"n{contador++}";
+                lista.Add(new OrgNode { Id = divisionId, ParentId = grupoId, Nombre = division.Nombre, Tipo = "Division" });
+                foreach (var taller in division.Talleres)
+                {
+                    var tallerId = $"n{contador++}";
+                    lista.Add(new OrgNode { Id = tallerId, ParentId = divisionId, Nombre = taller.Nombre, Tipo = "Taller" });
+
+                    foreach (var seccion in taller.Secciones)
+                    {
+                        var seccionId = $"n{contador++}";
+                        lista.Add(new OrgNode { Id = seccionId, ParentId = tallerId, Nombre = seccion, Tipo = "Seccion" });
+                    }
+                }
+            }
+        }
+
+        return lista;
+    }
+
+    // ── Sample hierarchical data – 500 nodes per Grupo (1000 total) ──────────
+    // Layout: 1 root + 5 divisions + 50 talleres (10/div) + 444 secciones = 500
+    private static List<Grupo> BuildEstructura()
+    {
+        // ── Division / Taller / Seccion name tables ───────────────────────────
+        var divNames1 = new[] {
+            "SECCIÓN DE GESTIÓN DE MATERIAL", "SECCIÓN DE RECEPCIÓN Y ENVÍOS",
+            "SECCIÓN DE INGENIERÍA", "SECCIÓN DE PLANIFICACIÓN LOGÍSTICA",
+            "SECCIÓN DE CONTROL ECONÓMICO"
+        };
+        var divNames2 = new[] {
+            "SECCIÓN DE MANTENIMIENTO AERONÁUTICO", "SECCIÓN DE MANTENIMIENTO TERRESTRE",
+            "SECCIÓN DE INGENIERÍA DE MANTENIMIENTO", "SECCIÓN DE CALIDAD Y SEGURIDAD",
+            "SECCIÓN DE APOYO OPERATIVO"
+        };
+
+        // 10 taller prefixes per division (2 grupos × 5 divs × 10 talleres = 100 talleres)
+        var tallerPrefixes1 = new[] {
+            // Div-1
+            new[] { "TALLER SISTEMAS SUPERVIVENCIA","NEG. GESTIÓN CONTRATOS","NEG. CATALOGACIÓN","NEG. GESTIÓN ARTÍCULOS","NEG. ADQUISICIONES",
+                    "NEG. ALMACÉN PRINCIPAL","NEG. CONTROL CALIDAD","NEG. PLANIFICACIÓN","NEG. SISTEMAS INFORMACIÓN","NEG. LOGÍSTICA ENTRADA" },
+            // Div-2
+            new[] { "NEG. VERIFICACIÓN","NEG. TRÁNSITO","NEG. ENVÍOS","NEG. CARGA","NEG. DISTRIBUCIÓN",
+                    "NEG. DEVOLUCIONES","NEG. EMBALAJES","NEG. DOCUMENTACIÓN","NEG. COORDINACIÓN","NEG. SEGUIMIENTO PEDIDOS" },
+            // Div-3
+            new[] { "NEG. DISEÑO","NEG. NORMALIZACIÓN TÉCNICA","NEG. INGENIERÍA PROCESOS","NEG. CONFIGURACIÓN","NEG. SOPORTE TÉCNICO",
+                    "NEG. ENSAYOS","NEG. MATERIALES","NEG. MEDIO AMBIENTE","NEG. I+D","NEG. TRANSFERENCIA TECNOLÓGICA" },
+            // Div-4
+            new[] { "NEG. PREVISIÓN DEMANDA","NEG. GESTIÓN STOCKS","NEG. PROVEEDORES","NEG. DISTRIBUCIÓN LOGÍSTICA","NEG. TRANSPORTE",
+                    "NEG. PACKAGING","NEG. TRAZABILIDAD","NEG. LOGÍSTICA INVERSA","NEG. COORDINACIÓN OPERATIVA","NEG. INDICADORES LOG." },
+            // Div-5
+            new[] { "NEG. PRESUPUESTOS","NEG. CONTABILIDAD","NEG. COSTES","NEG. FACTURACIÓN","NEG. AUDITORÍA INTERNA",
+                    "NEG. INFORMES FINANCIEROS","NEG. FISCALIDAD","NEG. INVERSIONES","NEG. CONTROL GESTIÓN","NEG. TESORERÍA" }
+        };
+        var tallerPrefixes2 = new[] {
+            // Div-1
+            new[] { "TALLER MOTORES","TALLER AVIÓNICOS","TALLER ESTRUCTURAS","TALLER HIDRÁULICOS","TALLER ELÉCTRICOS",
+                    "TALLER COMBUSTIBLE","TALLER SISTEMAS VUELO","TALLER PRESURIZACIÓN","TALLER PINTURA","TALLER COMPOSITES" },
+            // Div-2
+            new[] { "TALLER VEH. LIGEROS","TALLER VEH. PESADOS","TALLER ARMAMENTO","TALLER ELECTRÓNICA","TALLER GENERADORES",
+                    "TALLER EQUIPOS GSE","TALLER INFRAESTRUCTURAS","TALLER ELEVACIÓN","TALLER EQUIPOS ESPECIALES","TALLER COMBUSTIBLE TIERRA" },
+            // Div-3
+            new[] { "NEG. PLAN. MANTENIMIENTO","NEG. DOCUMENTACIÓN TÉCNICA","NEG. FIABILIDAD","NEG. AERONAVEGABILIDAD","NEG. MODIFICACIONES",
+                    "NEG. SOPORTE LÍNEA","NEG. CONTROL AERONAVES","NEG. ENTRENAMIENTO TÉCNICO","NEG. REPUESTOS CRÍTICOS","NEG. INGENIERÍA CAMPO" },
+            // Div-4
+            new[] { "NEG. CONTROL CALIDAD","NEG. GESTIÓN CALIDAD","NEG. SEGURIDAD VUELO","NEG. SEGURIDAD LABORAL","NEG. ENSAYOS NDT",
+                    "NEG. METROLOGÍA","NEG. MEDIOAMBIENTE","NEG. PROTECCIÓN INCENDIOS","NEG. SEGURIDAD FÍSICA","NEG. AUDITORÍA INTERNA" },
+            // Div-5
+            new[] { "NEG. OPERACIONES","NEG. COMUNICACIONES","NEG. INTELIGENCIA","NEG. PLAN. MISIONES","NEG. SUPERVIVENCIA RESCATE",
+                    "NEG. INSTRUCCIÓN VUELO","NEG. APOYO MÉDICO","NEG. CONTRAINCENDIOS","NEG. PROTOCOLO","NEG. APOYO LOGÍSTICO" }
+        };
+
+        // Sección suffix pool (reused across talleres)
+        var secSuffixes = new[] {
+            "A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T"
+        };
+
+        Grupo MakeGrupo(string nombre, string[] divs, string[][] tallersPerDiv)
+        {
+            var grupo = new Grupo { Nombre = nombre };
+            // secciones budget: 500 - 1(root) - 5(divs) - 50(talleres) = 444
+            // 50 talleres: first 44 get 9 secciones, last 6 get 8 → 44×9+6×8 = 396+48 = 444
+            int tallerGlobal = 0;
+            for (int d = 0; d < 5; d++)
+            {
+                var div = new Division { Nombre = divs[d] };
+                for (int t = 0; t < 10; t++, tallerGlobal++)
+                {
+                    int secCount = tallerGlobal < 44 ? 9 : 8;
+                    var taller = new Taller { Nombre = tallersPerDiv[d][t] };
+                    for (int s = 0; s < secCount; s++)
+                        taller.Secciones.Add($"SEC. {tallersPerDiv[d][t]} – {secSuffixes[s]}");
+                    div.Talleres.Add(taller);
+                }
+                grupo.Divisiones.Add(div);
+            }
+            return grupo;
+        }
+
+        return new List<Grupo>
+        {
+            MakeGrupo("GRUPO DE ABASTECIMIENTO",  divNames1, tallerPrefixes1),
+            MakeGrupo("GRUPO DE MANTENIMIENTO",   divNames2, tallerPrefixes2)
+        };
+    }
+
+    private static List<Grupo> _unusedData_PLACEHOLDER_START() => new()
+    {
+        new Grupo
+        {
+            Nombre = "GRUPO DE ABASTECIMIENTO",
+            Divisiones = new()
+            {
+                // Division 1 – 9 talleres, 5 secciones each → 9+45 = 54
+                new Division
+                {
+                    Nombre = "SECCIÓN DE GESTIÓN DE MATERIAL",
+                    Talleres = new()
+                    {
+                        new Taller { Nombre = "TALLERES DE SISTEMAS DE SUPERVIVENCIA",
+                            Secciones = new() { "TALLER DE ACONDICIONAMIENTO", "TALLER DE ASIENTOS LANZABLES", "TALLER DE OXÍGENO", "TALLER DE PARACAÍDAS", "TALLER DE ARMAMENTO" } },
+                        new Taller { Nombre = "NEGOCIADO DE GESTIÓN DE CONTRATOS",
+                            Secciones = new() { "SEC. CONTRATOS NACIONALES", "SEC. CONTRATOS INTERNACIONALES", "SEC. SEGUIMIENTO", "SEC. FACTURACIÓN", "SEC. AUDITORÍA" } },
+                        new Taller { Nombre = "NEGOCIADO DE CATALOGACIÓN",
+                            Secciones = new() { "SEC. CODIFICACIÓN", "SEC. NORMALIZACIÓN", "SEC. ACTUALIZACIÓN", "SEC. ARCHIVO", "SEC. CONTROL DE CAMBIOS" } },
+                        new Taller { Nombre = "NEGOCIADO DE GESTIÓN DE ARTÍCULOS",
+                            Secciones = new() { "SEC. INVENTARIO", "SEC. ROTACIÓN", "SEC. OBSOLESCENCIA", "SEC. REPUESTOS", "SEC. HERRAMIENTAS" } },
+                        new Taller { Nombre = "NEGOCIADO DE ADQUISICIONES",
+                            Secciones = new() { "SEC. COMPRAS LOCALES", "SEC. COMPRAS EXTERIORES", "SEC. LICITACIONES", "SEC. EVALUACIÓN", "SEC. RECEPCIÓN" } },
+                        new Taller { Nombre = "NEGOCIADO DE ALMACÉN PRINCIPAL",
+                            Secciones = new() { "SEC. ALMACÉN A", "SEC. ALMACÉN B", "SEC. ALMACÉN C", "SEC. ZONA FRÍA", "SEC. ZONA PELIGROSA" } },
+                        new Taller { Nombre = "NEGOCIADO DE CONTROL DE CALIDAD",
+                            Secciones = new() { "SEC. INSPECCIÓN ENTRADA", "SEC. INSPECCIÓN PROCESO", "SEC. CERTIFICACIÓN", "SEC. CALIBRACIÓN", "SEC. LABORATORIO" } },
+                        new Taller { Nombre = "NEGOCIADO DE PLANIFICACIÓN",
+                            Secciones = new() { "SEC. PROGRAMACIÓN", "SEC. SEGUIMIENTO PLANES", "SEC. ESTADÍSTICA", "SEC. INFORMES", "SEC. PREVISIÓN" } },
+                        new Taller { Nombre = "NEGOCIADO DE SISTEMAS DE INFORMACIÓN",
+                            Secciones = new() { "SEC. BASES DE DATOS", "SEC. APLICACIONES", "SEC. SOPORTE", "SEC. REDES", "SEC. SEGURIDAD TI" } }
+                    }
+                },
+                // Division 2 – 9 talleres, 5 secciones each → 9+45 = 54
+                new Division
+                {
+                    Nombre = "SECCIÓN DE RECEPCIÓN Y ENVÍOS",
+                    Talleres = new()
+                    {
+                        new Taller { Nombre = "NEGOCIADO DE VERIFICACIÓN",
+                            Secciones = new() { "SEC. CONTROL DOCUMENTAL", "SEC. INSPECCIÓN FÍSICA", "SEC. MUESTRAS", "SEC. DEVOLUCIONES", "SEC. INFORMES" } },
+                        new Taller { Nombre = "NEGOCIADO DE TRÁNSITO",
+                            Secciones = new() { "SEC. ADUANA", "SEC. TRANSPORTE TERRESTRE", "SEC. TRANSPORTE AÉREO", "SEC. SEGUROS", "SEC. TRACKING" } },
+                        new Taller { Nombre = "NEGOCIADO DE ENVÍOS",
+                            Secciones = new() { "SEC. EMBALAJE", "SEC. ETIQUETADO", "SEC. EXPEDICIÓN", "SEC. MENSAJERÍA", "SEC. CORREO OFICIAL" } },
+                        new Taller { Nombre = "NEGOCIADO DE CARGA",
+                            Secciones = new() { "SEC. CARGA AÉREA", "SEC. CARGA TERRESTRE", "SEC. CARGA MARÍTIMA", "SEC. PESOS Y MEDIDAS", "SEC. PELIGROSAS" } },
+                        new Taller { Nombre = "NEGOCIADO DE DISTRIBUCIÓN",
+                            Secciones = new() { "SEC. RUTAS", "SEC. VEHÍCULOS DISTRIBUCIÓN", "SEC. PUNTOS ENTREGA", "SEC. CONFIRMACIONES", "SEC. INCIDENCIAS" } },
+                        new Taller { Nombre = "NEGOCIADO DE DEVOLUCIONES",
+                            Secciones = new() { "SEC. RECEPCIÓN DEVOLUCIONES", "SEC. INSPECCIÓN", "SEC. REACONDICIONAMIENTO", "SEC. BAJA MATERIAL", "SEC. REGISTRO" } },
+                        new Taller { Nombre = "NEGOCIADO DE EMBALAJES",
+                            Secciones = new() { "SEC. DISEÑO EMBALAJE", "SEC. MATERIALES", "SEC. MARCADO", "SEC. PALÉS", "SEC. CONTENEDORES" } },
+                        new Taller { Nombre = "NEGOCIADO DE DOCUMENTACIÓN",
+                            Secciones = new() { "SEC. ALBARANES", "SEC. FACTURAS", "SEC. MANIFIESTOS", "SEC. PERMISOS", "SEC. ARCHIVO" } },
+                        new Taller { Nombre = "NEGOCIADO DE COORDINACIÓN",
+                            Secciones = new() { "SEC. ENLACE PROVEEDOR", "SEC. ENLACE CLIENTE", "SEC. PLANIFICACIÓN", "SEC. URGENCIAS", "SEC. SOPORTE" } }
+                    }
+                },
+                // Division 3 – 9 talleres, 4 secciones each → 9+36 = 45
+                new Division
+                {
+                    Nombre = "SECCIÓN DE INGENIERÍA",
+                    Talleres = new()
+                    {
+                        new Taller { Nombre = "NEGOCIADO DE DISEÑO",
+                            Secciones = new() { "SEC. CAD/CAM", "SEC. CÁLCULO", "SEC. PROTOTIPOS", "SEC. PLANOS" } },
+                        new Taller { Nombre = "NEGOCIADO DE NORMALIZACIÓN TÉCNICA",
+                            Secciones = new() { "SEC. NORMAS NACIONALES", "SEC. NORMAS OTAN", "SEC. PUBLICACIONES", "SEC. REVISIONES" } },
+                        new Taller { Nombre = "NEGOCIADO DE INGENIERÍA DE PROCESOS",
+                            Secciones = new() { "SEC. PROCESOS FABRICACIÓN", "SEC. PROCESOS REPARACIÓN", "SEC. MEJORA CONTINUA", "SEC. INDICADORES" } },
+                        new Taller { Nombre = "NEGOCIADO DE CONFIGURACIÓN",
+                            Secciones = new() { "SEC. GESTIÓN CONFIGURACIÓN", "SEC. CONTROL CAMBIOS", "SEC. REGISTROS", "SEC. AUDITORÍAS" } },
+                        new Taller { Nombre = "NEGOCIADO DE SOPORTE TÉCNICO",
+                            Secciones = new() { "SEC. CONSULTAS TÉCNICAS", "SEC. ASISTENCIA CAMPO", "SEC. FORMACIÓN TÉCNICA", "SEC. MANUALES" } },
+                        new Taller { Nombre = "NEGOCIADO DE ENSAYOS",
+                            Secciones = new() { "SEC. BANCO DE PRUEBAS", "SEC. EQUIPOS MEDIDA", "SEC. REGISTROS ENSAYOS", "SEC. CERTIFICACIÓN" } },
+                        new Taller { Nombre = "NEGOCIADO DE MATERIALES",
+                            Secciones = new() { "SEC. METALURGIA", "SEC. COMPOSITES", "SEC. TRATAMIENTOS", "SEC. CONTROL" } },
+                        new Taller { Nombre = "NEGOCIADO DE MEDIO AMBIENTE",
+                            Secciones = new() { "SEC. RESIDUOS", "SEC. EMISIONES", "SEC. SEGURIDAD LABORAL", "SEC. AUDITORÍA AMBIENTAL" } },
+                        new Taller { Nombre = "NEGOCIADO DE I+D",
+                            Secciones = new() { "SEC. PROYECTOS I+D", "SEC. PATENTES", "SEC. COLABORACIONES", "SEC. INNOVACIÓN" } }
+                    }
+                },
+                // Division 4 – 9 talleres, 4 secciones each → 9+36 = 45
+                new Division
+                {
+                    Nombre = "SECCIÓN DE PLANIFICACIÓN LOGÍSTICA",
+                    Talleres = new()
+                    {
+                        new Taller { Nombre = "NEGOCIADO DE PREVISIÓN DE DEMANDA",
+                            Secciones = new() { "SEC. ANÁLISIS HISTÓRICO", "SEC. MODELOS PREVISIÓN", "SEC. AJUSTE ESTACIONAL", "SEC. INFORMES" } },
+                        new Taller { Nombre = "NEGOCIADO DE GESTIÓN DE STOCKS",
+                            Secciones = new() { "SEC. NIVELES ÓPTIMOS", "SEC. PUNTO REORDEN", "SEC. EXCESOS", "SEC. ROTURAS" } },
+                        new Taller { Nombre = "NEGOCIADO DE PROVEEDORES",
+                            Secciones = new() { "SEC. HOMOLOGACIÓN", "SEC. EVALUACIÓN", "SEC. CONTRATOS MARCO", "SEC. AUDITORÍAS" } },
+                        new Taller { Nombre = "NEGOCIADO DE DISTRIBUCIÓN LOGÍSTICA",
+                            Secciones = new() { "SEC. RED DISTRIBUCIÓN", "SEC. CROSS-DOCKING", "SEC. LAST-MILE", "SEC. KPI LOGÍSTICOS" } },
+                        new Taller { Nombre = "NEGOCIADO DE TRANSPORTE",
+                            Secciones = new() { "SEC. FLOTA PROPIA", "SEC. SUBCONTRATACIÓN", "SEC. RUTAS OPTIMIZACIÓN", "SEC. COSTES" } },
+                        new Taller { Nombre = "NEGOCIADO DE PACKAGING",
+                            Secciones = new() { "SEC. DISEÑO PACKAGING", "SEC. SOSTENIBILIDAD", "SEC. HOMOLOGACIÓN", "SEC. COSTE" } },
+                        new Taller { Nombre = "NEGOCIADO DE TRAZABILIDAD",
+                            Secciones = new() { "SEC. CÓDIGO BARRAS", "SEC. RFID", "SEC. LOTES", "SEC. AUDITORÍA TRAZABILIDAD" } },
+                        new Taller { Nombre = "NEGOCIADO DE LOGÍSTICA INVERSA",
+                            Secciones = new() { "SEC. RECOGIDA", "SEC. CLASIFICACIÓN", "SEC. RECICLAJE", "SEC. INFORMES" } },
+                        new Taller { Nombre = "NEGOCIADO DE COORDINACIÓN OPERATIVA",
+                            Secciones = new() { "SEC. SALA OPERACIONES", "SEC. TURNICIDAD", "SEC. INCIDENCIAS", "SEC. COMUNICACIONES" } }
+                    }
+                },
+                // Division 5 – 9 talleres, 4 secciones each → 9+36 = 45
+                new Division
+                {
+                    Nombre = "SECCIÓN DE CONTROL ECONÓMICO",
+                    Talleres = new()
+                    {
+                        new Taller { Nombre = "NEGOCIADO DE PRESUPUESTOS",
+                            Secciones = new() { "SEC. ELABORACIÓN", "SEC. SEGUIMIENTO", "SEC. DESVIACIONES", "SEC. CIERRE" } },
+                        new Taller { Nombre = "NEGOCIADO DE CONTABILIDAD",
+                            Secciones = new() { "SEC. CONTABILIDAD GENERAL", "SEC. ANALÍTICA", "SEC. ACTIVOS FIJOS", "SEC. TESORERÍA" } },
+                        new Taller { Nombre = "NEGOCIADO DE COSTES",
+                            Secciones = new() { "SEC. COSTES DIRECTOS", "SEC. COSTES INDIRECTOS", "SEC. ESTÁNDAR", "SEC. VARIANZAS" } },
+                        new Taller { Nombre = "NEGOCIADO DE FACTURACIÓN",
+                            Secciones = new() { "SEC. FACTURACIÓN CLIENTES", "SEC. FACTURACIÓN PROVEEDORES", "SEC. COBROS", "SEC. PAGOS" } },
+                        new Taller { Nombre = "NEGOCIADO DE AUDITORÍA INTERNA",
+                            Secciones = new() { "SEC. AUDITORÍA FINANCIERA", "SEC. AUDITORÍA OPERATIVA", "SEC. RIESGOS", "SEC. CUMPLIMIENTO" } },
+                        new Taller { Nombre = "NEGOCIADO DE INFORMES FINANCIEROS",
+                            Secciones = new() { "SEC. BALANCE", "SEC. CUENTA RESULTADOS", "SEC. RATIOS", "SEC. CUADRO MANDO" } },
+                        new Taller { Nombre = "NEGOCIADO DE FISCALIDAD",
+                            Secciones = new() { "SEC. IVA", "SEC. IMPUESTO SOCIEDADES", "SEC. DECLARACIONES", "SEC. ASESORÍA" } },
+                        new Taller { Nombre = "NEGOCIADO DE INVERSIONES",
+                            Secciones = new() { "SEC. ANÁLISIS INVERSIÓN", "SEC. SEGUIMIENTO PROYECTOS", "SEC. RENTABILIDAD", "SEC. INFORMES" } },
+                        new Taller { Nombre = "NEGOCIADO DE CONTROL DE GESTIÓN",
+                            Secciones = new() { "SEC. INDICADORES", "SEC. BENCHMARKING", "SEC. REPORTING", "SEC. MEJORAS" } }
+                    }
+                }
+            }
+        },
+
+        // ── Grupo 2  (≈ 249 nodes: 1 root + 5 divisions + 45 talleres + 198 secciones) ──
+        new Grupo
+        {
+            Nombre = "GRUPO DE MANTENIMIENTO",
+            Divisiones = new()
+            {
+                // Division 1 – 9 talleres, 5 secciones each → 9+45 = 54
+                new Division
+                {
+                    Nombre = "SECCIÓN DE MANTENIMIENTO AERONÁUTICO",
+                    Talleres = new()
+                    {
+                        new Taller { Nombre = "TALLER DE MOTORES",
+                            Secciones = new() { "SEC. TURBINAS", "SEC. HÉLICES", "SEC. COMBUSTIÓN", "SEC. REDUCCIÓN", "SEC. PRUEBAS MOTOR" } },
+                        new Taller { Nombre = "TALLER DE AVIÓNICOS",
+                            Secciones = new() { "SEC. NAVEGACIÓN", "SEC. COMUNICACIONES", "SEC. IFF", "SEC. HUD", "SEC. FMS" } },
+                        new Taller { Nombre = "TALLER DE ESTRUCTURAS",
+                            Secciones = new() { "SEC. FUSELAJE", "SEC. ALAS", "SEC. EMPENAJE", "SEC. TREN ATERRIZAJE", "SEC. PUERTAS" } },
+                        new Taller { Nombre = "TALLER DE SISTEMAS HIDRÁULICOS",
+                            Secciones = new() { "SEC. BOMBAS", "SEC. ACTUADORES", "SEC. TUBERÍAS", "SEC. ACUMULADORES", "SEC. FILTROS" } },
+                        new Taller { Nombre = "TALLER DE SISTEMAS ELÉCTRICOS",
+                            Secciones = new() { "SEC. GENERADORES", "SEC. BATERÍAS", "SEC. CABLEADO", "SEC. CUADROS ELÉCTRICOS", "SEC. LUCES" } },
+                        new Taller { Nombre = "TALLER DE SISTEMAS DE COMBUSTIBLE",
+                            Secciones = new() { "SEC. DEPÓSITOS", "SEC. BOMBAS COMBUSTIBLE", "SEC. SONDAS", "SEC. VENTEOS", "SEC. TRANSFERENCIA" } },
+                        new Taller { Nombre = "TALLER DE SISTEMAS DE VUELO",
+                            Secciones = new() { "SEC. MANDOS VUELO", "SEC. AUTOPILOTO", "SEC. FBW", "SEC. ACTUADORES VUELO", "SEC. TRIMADO" } },
+                        new Taller { Nombre = "TALLER DE SISTEMAS DE PRESURIZACIÓN",
+                            Secciones = new() { "SEC. COMPRESOR", "SEC. VÁLVULAS", "SEC. SENSORES PRESIÓN", "SEC. REGULACIÓN", "SEC. MANTENIMIENTO PREVENTIVO" } },
+                        new Taller { Nombre = "TALLER DE PINTURA Y ACABADOS",
+                            Secciones = new() { "SEC. DECAPADO", "SEC. IMPRIMACIÓN", "SEC. PINTURA", "SEC. ACABADO FINAL", "SEC. INSPECCIÓN VISUAL" } }
+                    }
+                },
+                // Division 2 – 9 talleres, 5 secciones each → 9+45 = 54
+                new Division
+                {
+                    Nombre = "SECCIÓN DE MANTENIMIENTO TERRESTRE",
+                    Talleres = new()
+                    {
+                        new Taller { Nombre = "TALLER DE VEHÍCULOS LIGEROS",
+                            Secciones = new() { "SEC. MECÁNICA", "SEC. ELECTRICIDAD", "SEC. CARROCERÍA", "SEC. NEUMÁTICOS", "SEC. ITV" } },
+                        new Taller { Nombre = "TALLER DE VEHÍCULOS PESADOS",
+                            Secciones = new() { "SEC. MOTOR DIÉSEL", "SEC. TRANSMISIÓN", "SEC. FRENOS", "SEC. SUSPENSIÓN", "SEC. HIDRÁULICA" } },
+                        new Taller { Nombre = "TALLER DE ARMAMENTO",
+                            Secciones = new() { "SEC. ARMAS CORTAS", "SEC. ARMAS LARGAS", "SEC. CAÑONES", "SEC. MISILES", "SEC. MUNICIÓN" } },
+                        new Taller { Nombre = "TALLER DE ELECTRÓNICA",
+                            Secciones = new() { "SEC. RADARES", "SEC. COMUNICACIONES TIERRA", "SEC. SENSORES", "SEC. EW", "SEC. C2" } },
+                        new Taller { Nombre = "TALLER DE GENERADORES",
+                            Secciones = new() { "SEC. GRUPOS ELECTRÓGENOS", "SEC. REGULADORES", "SEC. INSTALACIONES", "SEC. CUADROS", "SEC. PRUEBAS" } },
+                        new Taller { Nombre = "TALLER DE EQUIPOS GSE",
+                            Secciones = new() { "SEC. GPU", "SEC. ASU", "SEC. TRACTOR REMOLQUE", "SEC. ESCALERAS", "SEC. EQUIPOS FUELING" } },
+                        new Taller { Nombre = "TALLER DE INFRAESTRUCTURAS",
+                            Secciones = new() { "SEC. EDIFICIOS", "SEC. INSTALACIONES ELÉCTRICAS", "SEC. FONTANERÍA", "SEC. CLIMATIZACIÓN", "SEC. SEGURIDAD" } },
+                        new Taller { Nombre = "TALLER DE MEDIOS DE ELEVACIÓN",
+                            Secciones = new() { "SEC. GRÚAS", "SEC. CARRETILLAS", "SEC. ELEVADORES", "SEC. ESLINGAS", "SEC. INSPECCIÓN PERIÓDICA" } },
+                        new Taller { Nombre = "TALLER DE EQUIPOS ESPECIALES",
+                            Secciones = new() { "SEC. SIMULADORES", "SEC. BANCO HIDRÁULICO", "SEC. BANCO ELÉCTRICO", "SEC. EQUIPOS NDT", "SEC. CALIBRACIÓN" } }
+                    }
+                },
+                // Division 3 – 9 talleres, 4 secciones each → 9+36 = 45
+                new Division
+                {
+                    Nombre = "SECCIÓN DE INGENIERÍA DE MANTENIMIENTO",
+                    Talleres = new()
+                    {
+                        new Taller { Nombre = "NEGOCIADO DE PLANIFICACIÓN DE MANTENIMIENTO",
+                            Secciones = new() { "SEC. PLAN MANTENIMIENTO", "SEC. PROGRAMACIÓN", "SEC. SEGUIMIENTO", "SEC. REVISIÓN" } },
+                        new Taller { Nombre = "NEGOCIADO DE DOCUMENTACIÓN TÉCNICA",
+                            Secciones = new() { "SEC. MANUALES AMM", "SEC. IPC", "SEC. SB/AD", "SEC. PUBLICACIONES" } },
+                        new Taller { Nombre = "NEGOCIADO DE FIABILIDAD",
+                            Secciones = new() { "SEC. ANÁLISIS FALLOS", "SEC. MTBF", "SEC. TENDENCIAS", "SEC. INFORMES FIABILIDAD" } },
+                        new Taller { Nombre = "NEGOCIADO DE AERONAVEGABILIDAD",
+                            Secciones = new() { "SEC. CERTIFICACIÓN", "SEC. DIRECTIVAS", "SEC. REGISTRO AERONAVE", "SEC. INSPECCIONES" } },
+                        new Taller { Nombre = "NEGOCIADO DE MODIFICACIONES",
+                            Secciones = new() { "SEC. INGENIERÍA MOD", "SEC. APROBACIÓN", "SEC. IMPLEMENTACIÓN", "SEC. SEGUIMIENTO" } },
+                        new Taller { Nombre = "NEGOCIADO DE SOPORTE EN LÍNEA",
+                            Secciones = new() { "SEC. TURNO A", "SEC. TURNO B", "SEC. TURNO C", "SEC. GUARDIA" } },
+                        new Taller { Nombre = "NEGOCIADO DE CONTROL DE AERONAVES",
+                            Secciones = new() { "SEC. DISPONIBILIDAD", "SEC. HORAS VUELO", "SEC. CICLOS", "SEC. REGISTRO TÉCNICO" } },
+                        new Taller { Nombre = "NEGOCIADO DE ENTRENAMIENTO TÉCNICO",
+                            Secciones = new() { "SEC. FORMACIÓN INICIAL", "SEC. FORMACIÓN CONTINUA", "SEC. CUALIFICACIONES", "SEC. SIMULACIÓN" } },
+                        new Taller { Nombre = "NEGOCIADO DE REPUESTOS CRÍTICOS",
+                            Secciones = new() { "SEC. LRU", "SEC. ROTABLES", "SEC. EXPENDABLES", "SEC. AOG" } }
+                    }
+                },
+                // Division 4 – 9 talleres, 4 secciones each → 9+36 = 45
+                new Division
+                {
+                    Nombre = "SECCIÓN DE CALIDAD Y SEGURIDAD",
+                    Talleres = new()
+                    {
+                        new Taller { Nombre = "NEGOCIADO DE CONTROL DE CALIDAD",
+                            Secciones = new() { "SEC. INSPECCIÓN PRODUCCIÓN", "SEC. AUDITORÍAS CALIDAD", "SEC. HOMOLOGACIONES", "SEC. RECLAMACIONES" } },
+                        new Taller { Nombre = "NEGOCIADO DE GESTIÓN DE CALIDAD",
+                            Secciones = new() { "SEC. ISO 9001", "SEC. AS9100", "SEC. MEJORA PROCESOS", "SEC. INDICADORES" } },
+                        new Taller { Nombre = "NEGOCIADO DE SEGURIDAD EN VUELO",
+                            Secciones = new() { "SEC. ANÁLISIS ACCIDENTES", "SEC. INVESTIGACIÓN", "SEC. PREVENCIÓN", "SEC. INFORMES" } },
+                        new Taller { Nombre = "NEGOCIADO DE SEGURIDAD LABORAL",
+                            Secciones = new() { "SEC. EVALUACIÓN RIESGOS", "SEC. EPIS", "SEC. SIMULACROS", "SEC. ACCIDENTABILIDAD" } },
+                        new Taller { Nombre = "NEGOCIADO DE ENSAYOS NO DESTRUCTIVOS",
+                            Secciones = new() { "SEC. ULTRASONIDOS", "SEC. PARTÍCULAS MAGNÉTICAS", "SEC. RADIOGRAFÍA", "SEC. TINTAS PENETRANTES" } },
+                        new Taller { Nombre = "NEGOCIADO DE METROLOGÍA",
+                            Secciones = new() { "SEC. LABORATORIO METROLOGÍA", "SEC. CALIBRACIÓN EQUIPOS", "SEC. TRAZABILIDAD", "SEC. INCERTIDUMBRES" } },
+                        new Taller { Nombre = "NEGOCIADO DE MEDIOAMBIENTE",
+                            Secciones = new() { "SEC. GESTIÓN RESIDUOS", "SEC. EMISIONES", "SEC. VERTIDOS", "SEC. ISO 14001" } },
+                        new Taller { Nombre = "NEGOCIADO DE PROTECCIÓN CONTRA INCENDIOS",
+                            Secciones = new() { "SEC. DETECCIÓN", "SEC. EXTINCIÓN", "SEC. EVACUACIÓN", "SEC. FORMACIÓN" } },
+                        new Taller { Nombre = "NEGOCIADO DE SEGURIDAD FÍSICA",
+                            Secciones = new() { "SEC. CONTROL ACCESOS", "SEC. CCTV", "SEC. RONDAS", "SEC. PROTOCOLO SEGURIDAD" } }
+                    }
+                },
+                // Division 5 – 9 talleres, 4 secciones each → 9+36 = 45
+                new Division
+                {
+                    Nombre = "SECCIÓN DE APOYO OPERATIVO",
+                    Talleres = new()
+                    {
+                        new Taller { Nombre = "NEGOCIADO DE OPERACIONES",
+                            Secciones = new() { "SEC. SALA OPS", "SEC. PROGRAMACIÓN VUELOS", "SEC. NOTAMS", "SEC. METEOROLOGÍA" } },
+                        new Taller { Nombre = "NEGOCIADO DE COMUNICACIONES",
+                            Secciones = new() { "SEC. VHF/UHF", "SEC. HF", "SEC. SATCOM", "SEC. REDES SEGURAS" } },
+                        new Taller { Nombre = "NEGOCIADO DE INTELIGENCIA",
+                            Secciones = new() { "SEC. ANÁLISIS", "SEC. IMINT", "SEC. SIGINT", "SEC. BRIEFINGS" } },
+                        new Taller { Nombre = "NEGOCIADO DE PLANIFICACIÓN MISIONES",
+                            Secciones = new() { "SEC. PLAN MISIÓN", "SEC. CARTOGRAFÍA", "SEC. CARGA DATOS", "SEC. DEBRIEFING" } },
+                        new Taller { Nombre = "NEGOCIADO DE SUPERVIVENCIA Y RESCATE",
+                            Secciones = new() { "SEC. SAR", "SEC. EJEP", "SEC. EQUIPO RESCATE", "SEC. COORDINACIÓN" } },
+                        new Taller { Nombre = "NEGOCIADO DE INSTRUCCIÓN Y VUELO",
+                            Secciones = new() { "SEC. INSTRUCCIÓN BÁSICA", "SEC. INSTRUCCIÓN AVANZADA", "SEC. SIMULADORES", "SEC. EVALUACIÓN PILOTOS" } },
+                        new Taller { Nombre = "NEGOCIADO DE APOYO MÉDICO",
+                            Secciones = new() { "SEC. MEDICINA AERONÁUTICA", "SEC. ENFERMERÍA", "SEC. URGENCIAS", "SEC. RECONOCIMIENTOS" } },
+                        new Taller { Nombre = "NEGOCIADO DE SERVICIO CONTRA INCENDIOS",
+                            Secciones = new() { "SEC. BOMBEROS", "SEC. VEHÍCULOS CONTRAINCENDIOS", "SEC. ESPUMAS", "SEC. PISTA" } },
+                    }
+                }
+            }
+        }
+    };
+    // ── Model classes ──────────────────────────────────────────────────────────
+    public class OrgNode
+    {
+        public string Id { get; set; } = string.Empty;
+        public string? ParentId { get; set; }   // nullable — root nodes have no parent
+        public string Nombre { get; set; } = string.Empty;
+        public string Tipo { get; set; } = string.Empty;
+    }
+
+    public class Grupo
+    {
+        public string Nombre { get; set; } = string.Empty;
+        public List<Division> Divisiones { get; set; } = new();
+    }
+
+    public class Division
+    {
+        public string Nombre { get; set; } = string.Empty;
+        public List<Taller> Talleres { get; set; } = new();
+    }
+
+    public class Taller
+    {
+        public string Nombre { get; set; } = string.Empty;
+        public List<string> Secciones { get; set; } = new();
+    }
+}
