@@ -2,11 +2,13 @@
 
 @using Syncfusion.Blazor.Diagram
 
+<button class="btn btn-primary" @onclick="OnButtonClick">
+    Click Me
+</button>
+
 <SfDiagramComponent @ref="diagram"
                     Height="800px"
                     Width="2000px"
-                    Nodes="@nodes"
-                    Connectors="@connectors"
                     NodeCreating="OnNodeCreating">
     <Layout Type="LayoutType.OrganizationalChart"
             HorizontalSpacing="20"
@@ -19,11 +21,11 @@
 </SfDiagramComponent>
 
 @code {
+    private void OnButtonClick()
+    {
+        Console.WriteLine("Button clicked");
+    }
     private SfDiagramComponent? diagram;
-
-    // ── Diagram node/connector collections (populated automatically by DataSourceSettings) ──
-    private DiagramObjectCollection<Node> nodes = new();
-    private DiagramObjectCollection<Connector> connectors = new();
 
     // ── Flat list consumed by DataSourceSettings ──────────────────────────────
     private List<OrgNode> orgNodes = new();
